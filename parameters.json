@@ -1,0 +1,11 @@
+{
+    "activationOrder": 1,
+    "redSize": 10,
+    "redHealth": 1,
+    "redShotProb": 0.05,
+    "redRetreatThreshold": 0.4,
+    "blueSize": 10,
+    "blueHealth": 1,
+    "blueShotProb": 0.05,
+    "blueRetreatThreshold": 0.4
+}
