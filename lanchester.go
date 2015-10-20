@@ -144,7 +144,7 @@ func doCombatRandomAsync(red, blue *force) bool {
 			} else {
 				shoot(blue.forces[x-len(red.forces)], red)
 			}
-			y := removeKilled(red, blue)
+			_ := removeKilled(red, blue)
 			if adjudicate(red, blue, red.forceSize, blue.forceSize) {
 				return true
 			}
