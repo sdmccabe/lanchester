@@ -1,10 +1,21 @@
 package main
 
 import (
-	"flag"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"math/rand"
+	"os"
 	"time"
+)
+
+type ActivationOrder int
+
+const (
+	randomSynchronous = iota
+	uniformSynchronous
+	randomAsynchronous
+	uniformAsynchronous
 )
 
 type unit struct {
@@ -13,21 +24,52 @@ type unit struct {
 }
 type force struct {
 	forces           []unit
+	forceSize        int
 	retreatThreshold float64
 	shotProb         float64
 	health           int
 }
 
-var turns = 0
-
-func (f force) String() string {
-	return fmt.Sprintf("force has %v units, each with maximum health %v, a %v kill probability, and a retreat threshold of %v",
-		len(f.forces), f.health, f.shotProb, f.retreatThreshold)
+type parameters struct {
+	ActivationOrder      ActivationOrder `json:"activationOrder"`
+	RedSize              int             `json:"RedSize"`
+	RedHealth            int             `json:"RedHealth"`
+	RedShotProb          float64         `json:"RedShotProb"`
+	RedRetreatThreshold  float64         `json:"RedRetreatThreshold"`
+	BlueSize             int             `json:"BlueSize"`
+	BlueHealth           int             `json:"BlueHealth"`
+	BlueShotProb         float64         `json:"BlueShotProb"`
+	BlueRetreatThreshold float64         `json:"BlueRetreatThreshold"`
 }
 
+var turns = 0
+
+//Implement Stringer
+func (f force) String() string {
+	return fmt.Sprintf("%v units, each with maximum health %v, a %v kill probability, and a retreat threshold of %v",
+		len(f.forces), f.health, f.shotProb, f.retreatThreshold)
+}
+func (a ActivationOrder) String() string {
+	if a == 0 {
+		return fmt.Sprintf("random synchronous")
+	} else if a == 1 {
+		return fmt.Sprintf("uniform synchronous")
+	} else if a == 2 {
+		return fmt.Sprintf("random asynchronous")
+	} else if a == 3 {
+		return fmt.Sprintf("uniform asynchronous")
+	}
+	return "undefined"
+}
+
+//Initialize and return a force: a collection of units
 func createForce(size, health int, shotProb, retreatThreshold float64) force {
 
-	f := force{forces: make([]unit, 0), retreatThreshold: retreatThreshold, shotProb: shotProb, health: health}
+	f := force{forces: make([]unit, 0),
+		forceSize:        size,
+		retreatThreshold: retreatThreshold,
+		shotProb:         shotProb,
+		health:           health}
 	for i := 0; i < size; i++ {
 		f.forces = append(f.forces, unit{shotProb, health})
 
@@ -35,12 +77,13 @@ func createForce(size, health int, shotProb, retreatThreshold float64) force {
 	return f
 }
 
+//Adjucate combat. This should probably be restructured into a scheduling function.
 func doCombat(red, blue *force) bool {
-	redSize := len(red.forces)
-	blueSize := len(blue.forces) //TODO move these into the structs
 	for {
+		// increment turn
+		turns++
+
 		// random (synchronous?) activation first, it's simplest
-		//_ = "breakpoint"
 		pool := len(red.forces) + len(blue.forces)
 		for i := 0; i < pool; i++ {
 			active := rand.Intn(pool)
@@ -54,24 +97,53 @@ func doCombat(red, blue *force) bool {
 		//remove killed units
 		removeKilled(red, blue)
 
-		// increment turn
-		turns++
 		//adjudicate results
-		if adjudicate(red, blue, redSize, blueSize) {
+		if adjudicate(red, blue, red.forceSize, blue.forceSize) {
 			return true
 		}
 	}
 	return false
 }
 
-func adjudicate(red, blue *force, redSize, blueSize int) bool {
+func doCombatUniform(red, blue *force) bool {
+	for {
+		_ = "breakpoint"
+		// increment turn
+		turns++
+
+		// uniform (synchronous?) activation
+		turnList := rand.Perm(len(red.forces) + len(blue.forces))
+		for _, e := range turnList {
+			if e >= len(red.forces) {
+				shoot(blue.forces[e-len(red.forces)], red)
+			} else {
+				shoot(red.forces[e], blue)
+			}
+
+		}
+
+		// remove killed units
+		removeKilled(red, blue)
+
+		//adjudicate results
+		if adjudicate(red, blue, red.forceSize, blue.forceSize) {
+			return true
+		}
+
+	}
+	return false
+}
+
+//Determine if one force should retreat. This should be refactored to determine a winner/loser.
+func adjudicate(red, blue *force, RedSize, BlueSize int) bool {
 	_ = "breakpoint"
-	if float64(len(red.forces)) < float64(redSize)*red.retreatThreshold || float64(len(blue.forces)) < float64(blueSize)*blue.retreatThreshold {
+	if float64(len(red.forces)) < float64(RedSize)*red.retreatThreshold || float64(len(blue.forces)) < float64(BlueSize)*blue.retreatThreshold {
 		return true
 	}
 	return false
 }
 
+//Remove all forces with health = 0.
 func removeKilled(red, blue *force) {
 	//_ = "breakpoint"
 	for i := 0; i < len(red.forces); i++ {
@@ -97,6 +169,7 @@ func removeKilled(red, blue *force) {
 	}
 }
 
+//One agent shoots at all opposing agents.
 func shoot(a unit, target *force) {
 	for i := range target.forces {
 		if rand.Float64() < a.shotProb {
@@ -106,37 +179,30 @@ func shoot(a unit, target *force) {
 }
 
 func main() {
-	// variable declarations before flag.Parse()
-	var redSize int
-	var redHealth int
-	var redShotProb float64
-	var redRetreatThreshold float64
-	var blueSize int
-	var blueHealth int
-	var blueShotProb float64
-	var blueRetreatThreshold float64
-
-	// parse flags
-	flag.IntVar(&redSize, "rs", 10, "number of red agents")
-	flag.IntVar(&blueSize, "bs", 10, "number of blue agents")
-	flag.IntVar(&redHealth, "rh", 1, "health of red agents")
-	flag.IntVar(&blueHealth, "bh", 1, "health of blue agents")
-	flag.Float64Var(&redShotProb, "rp", 0.05, "red shot probability")
-	flag.Float64Var(&blueShotProb, "bp", 0.05, "blue shot probability")
-	flag.Float64Var(&redRetreatThreshold, "rr", 0.4, "red retreat threshold")
-	flag.Float64Var(&blueRetreatThreshold, "br", 0.4, "blue retreat threshold")
-	flag.Parse()
-
+	_ = "breakpoint"
+	file, err := ioutil.ReadFile(os.Args[1])
+	if err != nil {
+		fmt.Println("Error opening parameter file")
+		os.Exit(1)
+	}
+	var par parameters
+	err = json.Unmarshal(file, &par)
+	if err != nil {
+		fmt.Println("Error parsing JSON")
+		os.Exit(2)
+	}
 	rand.Seed(time.Now().UnixNano())
-	red := createForce(redSize, redHealth, redShotProb, redRetreatThreshold)
-	blue := createForce(blueSize, blueHealth, blueShotProb, blueRetreatThreshold)
+	// initialize forces
+	red := createForce(par.RedSize, par.RedHealth, par.RedShotProb, par.RedRetreatThreshold)
+	blue := createForce(par.BlueSize, par.BlueHealth, par.BlueShotProb, par.BlueRetreatThreshold)
 
 	fmt.Println("Initial model state:")
-	fmt.Printf("The red %v.\n", red)
-	fmt.Printf("The blue %v.\n", blue)
-	doCombat(&red, &blue)
+	fmt.Printf("The red force has %v.\n", red)
+	fmt.Printf("The blue force has %v.\n", blue)
+	fmt.Printf("Running model with %v activation:\n", par.ActivationOrder)
+	doCombatUniform(&red, &blue)
 	fmt.Printf("\nModel finished after %v turns.\n\n", turns)
 	fmt.Println("Final model state:")
-	fmt.Printf("The red %v.\n", red)
-	fmt.Printf("The blue %v.\n", blue)
+	fmt.Printf("The red force has %v.\n", red)
+	fmt.Printf("The blue force %v.\n", blue)
 }
