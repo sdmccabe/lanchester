@@ -22,6 +22,7 @@ type unit struct {
 	shotProb float64
 	health   int
 }
+
 type force struct {
 	forces           []unit
 	forceSize        int
@@ -49,6 +50,7 @@ func (f force) String() string {
 	return fmt.Sprintf("%v units, each with maximum health %v, a %v kill probability, and a retreat threshold of %v",
 		len(f.forces), f.health, f.shotProb, f.retreatThreshold)
 }
+
 func (a ActivationOrder) String() string {
 	if a == 0 {
 		return fmt.Sprintf("random synchronous")
@@ -95,7 +97,7 @@ func doCombat(red, blue *force) bool {
 		}
 
 		//remove killed units
-		removeKilled(red, blue)
+		_ = removeKilled(red, blue)
 
 		//adjudicate results
 		if adjudicate(red, blue, red.forceSize, blue.forceSize) {
@@ -107,7 +109,6 @@ func doCombat(red, blue *force) bool {
 
 func doCombatUniform(red, blue *force) bool {
 	for {
-		_ = "breakpoint"
 		// increment turn
 		turns++
 
@@ -123,7 +124,7 @@ func doCombatUniform(red, blue *force) bool {
 		}
 
 		// remove killed units
-		removeKilled(red, blue)
+		_ = removeKilled(red, blue)
 
 		//adjudicate results
 		if adjudicate(red, blue, red.forceSize, blue.forceSize) {
@@ -132,6 +133,46 @@ func doCombatUniform(red, blue *force) bool {
 
 	}
 	return false
+}
+func doCombatRandomAsync(red, blue *force) bool {
+	for {
+		turns++
+		for i := 0; i < len(red.forces)+len(blue.forces); i++ {
+			x := rand.Intn(len(red.forces) + len(blue.forces))
+			if x < len(red.forces) {
+				shoot(red.forces[x], blue)
+			} else {
+				shoot(blue.forces[x-len(red.forces)], red)
+			}
+			y := removeKilled(red, blue)
+			if adjudicate(red, blue, red.forceSize, blue.forceSize) {
+				return true
+			}
+
+		}
+
+	}
+}
+
+func doCombatUniformAsync(red, blue *force) bool {
+	for {
+		turns++
+		for i := 0; i < len(red.forces)+len(blue.forces); i++ {
+			x := rand.Intn(len(red.forces) + len(blue.forces))
+			if x < len(red.forces) {
+				shoot(red.forces[x], blue)
+			} else {
+				shoot(blue.forces[x-len(red.forces)], red)
+			}
+			y := removeKilled(red, blue)
+			fmt.Printf("Killed: %v\n", y)
+			if adjudicate(red, blue, red.forceSize, blue.forceSize) {
+				return true
+			}
+
+		}
+
+	}
 }
 
 //Determine if one force should retreat. This should be refactored to determine a winner/loser.
@@ -143,12 +184,13 @@ func adjudicate(red, blue *force, RedSize, BlueSize int) bool {
 	return false
 }
 
-//Remove all forces with health = 0.
-func removeKilled(red, blue *force) {
-	//_ = "breakpoint"
+//Remove all forces with health = 0. Return array of killed units.
+func removeKilled(red, blue *force) []int {
+	killed := make([]int, 0)
+	redSize := len(red.forces)
 	for i := 0; i < len(red.forces); i++ {
-		_ = "breakpoint"
 		if red.forces[i].health <= 0 {
+			killed = append(killed, i)
 			if i < len(red.forces)-1 {
 				red.forces = append(red.forces[:i], red.forces[i+1:]...)
 			} else {
@@ -159,6 +201,7 @@ func removeKilled(red, blue *force) {
 	}
 	for i := 0; i < len(blue.forces); i++ {
 		if blue.forces[i].health <= 0 {
+			killed = append(killed, i+redSize)
 			if i < len(blue.forces)-1 {
 				blue.forces = append(blue.forces[:i], blue.forces[i+1:]...)
 			} else {
@@ -167,6 +210,7 @@ func removeKilled(red, blue *force) {
 			i--
 		}
 	}
+	return killed
 }
 
 //One agent shoots at all opposing agents.
@@ -200,7 +244,15 @@ func main() {
 	fmt.Printf("The red force has %v.\n", red)
 	fmt.Printf("The blue force has %v.\n", blue)
 	fmt.Printf("Running model with %v activation:\n", par.ActivationOrder)
-	doCombatUniform(&red, &blue)
+	if par.ActivationOrder == randomSynchronous {
+		doCombat(&red, &blue)
+	} else if par.ActivationOrder == uniformSynchronous {
+		doCombatUniform(&red, &blue)
+	} else if par.ActivationOrder == randomAsynchronous {
+		doCombatRandomAsync(&red, &blue)
+	} else if par.ActivationOrder == uniformAsynchronous {
+		doCombatUniformAsync(&red, &blue)
+	}
 	fmt.Printf("\nModel finished after %v turns.\n\n", turns)
 	fmt.Println("Final model state:")
 	fmt.Printf("The red force has %v.\n", red)
