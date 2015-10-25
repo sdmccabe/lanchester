@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -32,6 +33,7 @@ type force struct {
 }
 
 type parameters struct {
+	Verbose              bool            `json:"verbose"`
 	ActivationOrder      ActivationOrder `json:"activationOrder"`
 	RedSize              int             `json:"RedSize"`
 	RedHealth            int             `json:"RedHealth"`
@@ -43,7 +45,10 @@ type parameters struct {
 	BlueRetreatThreshold float64         `json:"BlueRetreatThreshold"`
 }
 
+type casualties []int
+
 var turns = 0
+var par parameters
 
 //Implement Stringer
 func (f force) String() string {
@@ -62,6 +67,13 @@ func (a ActivationOrder) String() string {
 		return fmt.Sprintf("uniform asynchronous")
 	}
 	return "undefined"
+}
+func (c casualties) String() string {
+	var buffer bytes.Buffer
+	for _, x := range c {
+		buffer.WriteString(fmt.Sprintf("%v ", x))
+	}
+	return buffer.String()
 }
 
 //Initialize and return a force: a collection of units
@@ -97,8 +109,10 @@ func doCombat(red, blue *force) bool {
 		}
 
 		//remove killed units
-		_ = removeKilled(red, blue)
-
+		redKilled, blueKilled := removeKilled(red, blue)
+		if par.Verbose {
+			printCasualties(redKilled, blueKilled)
+		}
 		//adjudicate results
 		if adjudicate(red, blue, red.forceSize, blue.forceSize) {
 			return true
@@ -122,9 +136,11 @@ func doCombatUniform(red, blue *force) bool {
 			}
 
 		}
-
-		// remove killed units
-		_ = removeKilled(red, blue)
+		//remove killed units
+		redKilled, blueKilled := removeKilled(red, blue)
+		if par.Verbose {
+			printCasualties(redKilled, blueKilled)
+		}
 
 		//adjudicate results
 		if adjudicate(red, blue, red.forceSize, blue.forceSize) {
@@ -144,7 +160,12 @@ func doCombatRandomAsync(red, blue *force) bool {
 			} else {
 				shoot(blue.forces[x-len(red.forces)], red)
 			}
-			_ := removeKilled(red, blue)
+			//remove killed units
+			redKilled, blueKilled := removeKilled(red, blue)
+			if par.Verbose {
+				printCasualties(redKilled, blueKilled)
+			}
+
 			if adjudicate(red, blue, red.forceSize, blue.forceSize) {
 				return true
 			}
@@ -164,8 +185,12 @@ func doCombatUniformAsync(red, blue *force) bool {
 			} else {
 				shoot(blue.forces[x-len(red.forces)], red)
 			}
-			y := removeKilled(red, blue)
-			fmt.Printf("Killed: %v\n", y)
+			//remove killed units
+			redKilled, blueKilled := removeKilled(red, blue)
+			if par.Verbose {
+				printCasualties(redKilled, blueKilled)
+			}
+
 			if adjudicate(red, blue, red.forceSize, blue.forceSize) {
 				return true
 			}
@@ -185,12 +210,12 @@ func adjudicate(red, blue *force, RedSize, BlueSize int) bool {
 }
 
 //Remove all forces with health = 0. Return array of killed units.
-func removeKilled(red, blue *force) []int {
-	killed := make([]int, 0)
-	redSize := len(red.forces)
+func removeKilled(red, blue *force) (casualties, casualties) {
+	redKilled := make([]int, 0)
+	blueKilled := make([]int, 0)
 	for i := 0; i < len(red.forces); i++ {
 		if red.forces[i].health <= 0 {
-			killed = append(killed, i)
+			redKilled = append(redKilled, i)
 			if i < len(red.forces)-1 {
 				red.forces = append(red.forces[:i], red.forces[i+1:]...)
 			} else {
@@ -201,7 +226,7 @@ func removeKilled(red, blue *force) []int {
 	}
 	for i := 0; i < len(blue.forces); i++ {
 		if blue.forces[i].health <= 0 {
-			killed = append(killed, i+redSize)
+			blueKilled = append(blueKilled, i)
 			if i < len(blue.forces)-1 {
 				blue.forces = append(blue.forces[:i], blue.forces[i+1:]...)
 			} else {
@@ -210,7 +235,7 @@ func removeKilled(red, blue *force) []int {
 			i--
 		}
 	}
-	return killed
+	return redKilled, blueKilled
 }
 
 //One agent shoots at all opposing agents.
@@ -222,18 +247,33 @@ func shoot(a unit, target *force) {
 	}
 }
 
+func printCasualties(r, b casualties) {
+	printR := len(r) > 0
+	printB := len(b) > 0
+	if printR || printB {
+		fmt.Println()
+		if printR {
+			fmt.Printf("Red forces: %vkilled\n", r.String())
+		} else {
+			fmt.Printf("Blue forces: %vkilled\n", b.String())
+		}
+	}
+
+}
 func main() {
-	_ = "breakpoint"
+	if len(os.Args) <= 1 {
+		fmt.Println("Please provide a JSON file with the appropriate model parameters")
+		os.Exit(1)
+	}
 	file, err := ioutil.ReadFile(os.Args[1])
 	if err != nil {
 		fmt.Println("Error opening parameter file")
-		os.Exit(1)
+		os.Exit(2)
 	}
-	var par parameters
 	err = json.Unmarshal(file, &par)
 	if err != nil {
 		fmt.Println("Error parsing JSON")
-		os.Exit(2)
+		os.Exit(3)
 	}
 	rand.Seed(time.Now().UnixNano())
 	// initialize forces
