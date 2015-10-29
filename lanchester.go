@@ -11,12 +11,20 @@ import (
 )
 
 type ActivationOrder int
+type BatchMode int
 
 const (
 	randomSynchronous = iota
 	uniformSynchronous
 	randomAsynchronous
 	uniformAsynchronous
+)
+
+const (
+	singleRun = iota
+	parameterSweep
+	monteCarlo
+	latinHypercube
 )
 
 type unit struct {
@@ -32,23 +40,40 @@ type force struct {
 	health           int
 }
 
+type modelSettings struct {
+	BatchMode            BatchMode          `json:"batchMode"`
+	Niter                int                `json:"niter"`
+	Verbose              bool               `json:"verbose"`
+	ActivationOrder      [3]ActivationOrder `json:"activationOrder"`
+	RedSize              [3]int             `json:"RedSize"`
+	RedHealth            [3]int             `json:"RedHealth"`
+	RedShotProb          [3]float64         `json:"RedShotProb"`
+	RedRetreatThreshold  [3]float64         `json:"RedRetreatThreshold"`
+	BlueSize             [3]int             `json:"BlueSize"`
+	BlueHealth           [3]int             `json:"BlueHealth"`
+	BlueShotProb         [3]float64         `json:"BlueShotProb"`
+	BlueRetreatThreshold [3]float64         `json:"BlueRetreatThreshold"`
+}
+
 type parameters struct {
-	Verbose              bool            `json:"verbose"`
-	ActivationOrder      ActivationOrder `json:"activationOrder"`
-	RedSize              int             `json:"RedSize"`
-	RedHealth            int             `json:"RedHealth"`
-	RedShotProb          float64         `json:"RedShotProb"`
-	RedRetreatThreshold  float64         `json:"RedRetreatThreshold"`
-	BlueSize             int             `json:"BlueSize"`
-	BlueHealth           int             `json:"BlueHealth"`
-	BlueShotProb         float64         `json:"BlueShotProb"`
-	BlueRetreatThreshold float64         `json:"BlueRetreatThreshold"`
+	Verbose              bool
+	ActivationOrder      ActivationOrder
+	RedSize              int
+	RedHealth            int
+	RedShotProb          float64
+	RedRetreatThreshold  float64
+	BlueSize             int
+	BlueHealth           int
+	BlueShotProb         float64
+	BlueRetreatThreshold float64
 }
 
 type casualties []int
 
 var turns = 0
 var par parameters
+var set modelSettings
+var runNum = 1
 
 //Implement Stringer
 func (f force) String() string {
@@ -92,7 +117,7 @@ func createForce(size, health int, shotProb, retreatThreshold float64) force {
 }
 
 //Adjucate combat. This should probably be restructured into a scheduling function.
-func doCombat(red, blue *force) bool {
+func doCombatRandomSync(red, blue *force, par parameters) bool {
 	for {
 		// increment turn
 		turns++
@@ -114,14 +139,14 @@ func doCombat(red, blue *force) bool {
 			printCasualties(redKilled, blueKilled)
 		}
 		//adjudicate results
-		if adjudicate(red, blue, red.forceSize, blue.forceSize) {
+		if adjudicate(red, blue, red.forceSize, blue.forceSize, par) {
 			return true
 		}
 	}
 	return false
 }
 
-func doCombatUniform(red, blue *force) bool {
+func doCombatUniform(red, blue *force, par parameters) bool {
 	for {
 		// increment turn
 		turns++
@@ -143,14 +168,14 @@ func doCombatUniform(red, blue *force) bool {
 		}
 
 		//adjudicate results
-		if adjudicate(red, blue, red.forceSize, blue.forceSize) {
+		if adjudicate(red, blue, red.forceSize, blue.forceSize, par) {
 			return true
 		}
 
 	}
 	return false
 }
-func doCombatRandomAsync(red, blue *force) bool {
+func doCombatRandomAsync(red, blue *force, par parameters) bool {
 	for {
 		turns++
 		for i := 0; i < len(red.forces)+len(blue.forces); i++ {
@@ -166,7 +191,7 @@ func doCombatRandomAsync(red, blue *force) bool {
 				printCasualties(redKilled, blueKilled)
 			}
 
-			if adjudicate(red, blue, red.forceSize, blue.forceSize) {
+			if adjudicate(red, blue, red.forceSize, blue.forceSize, par) {
 				return true
 			}
 
@@ -175,7 +200,7 @@ func doCombatRandomAsync(red, blue *force) bool {
 	}
 }
 
-func doCombatUniformAsync(red, blue *force) bool {
+func doCombatUniformAsync(red, blue *force, par parameters) bool {
 	for {
 		turns++
 		for i := 0; i < len(red.forces)+len(blue.forces); i++ {
@@ -191,7 +216,7 @@ func doCombatUniformAsync(red, blue *force) bool {
 				printCasualties(redKilled, blueKilled)
 			}
 
-			if adjudicate(red, blue, red.forceSize, blue.forceSize) {
+			if adjudicate(red, blue, red.forceSize, blue.forceSize, par) {
 				return true
 			}
 
@@ -201,7 +226,7 @@ func doCombatUniformAsync(red, blue *force) bool {
 }
 
 //Determine if one force should retreat. This should be refactored to determine a winner/loser.
-func adjudicate(red, blue *force, RedSize, BlueSize int) bool {
+func adjudicate(red, blue *force, RedSize, BlueSize int, par parameters) bool {
 	_ = "breakpoint"
 	if float64(len(red.forces)) < float64(RedSize)*red.retreatThreshold || float64(len(blue.forces)) < float64(BlueSize)*blue.retreatThreshold {
 		return true
@@ -260,6 +285,34 @@ func printCasualties(r, b casualties) {
 	}
 
 }
+
+func runModel(par parameters, runNum int) {
+	// initialize forces
+	red := createForce(par.RedSize, par.RedHealth, par.RedShotProb, par.RedRetreatThreshold)
+	blue := createForce(par.BlueSize, par.BlueHealth, par.BlueShotProb, par.BlueRetreatThreshold)
+
+	fmt.Println()
+	fmt.Printf("Starting run number %v \n", runNum)
+	fmt.Println("Initial model state:")
+	fmt.Printf("The red force has %v.\n", red)
+	fmt.Printf("The blue force has %v.\n", blue)
+	fmt.Printf("Running model with %v activation:\n", par.ActivationOrder)
+	if par.ActivationOrder == randomSynchronous {
+		doCombatRandomSync(&red, &blue, par)
+	} else if par.ActivationOrder == uniformSynchronous {
+		doCombatUniform(&red, &blue, par)
+	} else if par.ActivationOrder == randomAsynchronous {
+		doCombatRandomAsync(&red, &blue, par)
+	} else if par.ActivationOrder == uniformAsynchronous {
+		doCombatUniformAsync(&red, &blue, par)
+	}
+	fmt.Printf("\nModel finished after %v turns.\n\n", turns)
+	fmt.Println("Final model state:")
+	fmt.Printf("The red force has %v.\n", red)
+	fmt.Printf("The blue force %v.\n", blue)
+
+}
+
 func main() {
 	if len(os.Args) <= 1 {
 		fmt.Println("Please provide a JSON file with the appropriate model parameters")
@@ -270,31 +323,28 @@ func main() {
 		fmt.Println("Error opening parameter file")
 		os.Exit(2)
 	}
-	err = json.Unmarshal(file, &par)
+	err = json.Unmarshal(file, &set)
 	if err != nil {
 		fmt.Println("Error parsing JSON")
 		os.Exit(3)
 	}
-	rand.Seed(time.Now().UnixNano())
-	// initialize forces
-	red := createForce(par.RedSize, par.RedHealth, par.RedShotProb, par.RedRetreatThreshold)
-	blue := createForce(par.BlueSize, par.BlueHealth, par.BlueShotProb, par.BlueRetreatThreshold)
 
-	fmt.Println("Initial model state:")
-	fmt.Printf("The red force has %v.\n", red)
-	fmt.Printf("The blue force has %v.\n", blue)
-	fmt.Printf("Running model with %v activation:\n", par.ActivationOrder)
-	if par.ActivationOrder == randomSynchronous {
-		doCombat(&red, &blue)
-	} else if par.ActivationOrder == uniformSynchronous {
-		doCombatUniform(&red, &blue)
-	} else if par.ActivationOrder == randomAsynchronous {
-		doCombatRandomAsync(&red, &blue)
-	} else if par.ActivationOrder == uniformAsynchronous {
-		doCombatUniformAsync(&red, &blue)
+	rand.Seed(time.Now().UnixNano())
+
+	if set.BatchMode == 0 {
+		par = parameters{
+			Verbose:              set.Verbose,
+			ActivationOrder:      set.ActivationOrder[0],
+			RedSize:              set.RedSize[0],
+			RedHealth:            set.RedHealth[0],
+			RedShotProb:          set.RedShotProb[0],
+			RedRetreatThreshold:  set.RedRetreatThreshold[0],
+			BlueSize:             set.BlueSize[0],
+			BlueHealth:           set.BlueHealth[0],
+			BlueShotProb:         set.BlueShotProb[0],
+			BlueRetreatThreshold: set.BlueRetreatThreshold[0],
+		}
+		runModel(par, runNum)
 	}
-	fmt.Printf("\nModel finished after %v turns.\n\n", turns)
-	fmt.Println("Final model state:")
-	fmt.Printf("The red force has %v.\n", red)
-	fmt.Printf("The blue force %v.\n", blue)
+
 }

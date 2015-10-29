@@ -1,12 +1,14 @@
 {
+    "batchMode": 0,
+    "niter": 10,
     "verbose" : true,
-    "activationOrder": 3,
-    "redSize": 10,
-    "redHealth": 1,
-    "redShotProb": 0.01,
-    "redRetreatThreshold": 0.4,
-    "blueSize": 10,
-    "blueHealth": 1,
-    "blueShotProb": 0.01,
-    "blueRetreatThreshold": 0.4
+    "activationOrder": [0,3,1],
+    "redSize": [10,10,0],
+    "redHealth": [1,1,0],
+    "redShotProb": [0.01,0.05,0.01],
+    "redRetreatThreshold": [0.4,0.4,0],
+    "blueSize": [10,10,0],
+    "blueHealth": [1,1,0],
+    "blueShotProb": [0.01,0.05,0.01],
+    "blueRetreatThreshold": [0.4,0.4,0]
 }
