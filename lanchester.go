@@ -1,18 +1,31 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"os"
+	"strings"
 	"time"
 )
 
+var f *os.File
+var w *csv.Writer
+
 type ActivationOrder int
 type BatchMode int
+type Outcome int
 
+const (
+	incomplete = iota
+	redVictory
+	blueVictory
+	tie
+)
 const (
 	randomSynchronous = iota
 	uniformSynchronous
@@ -41,18 +54,20 @@ type force struct {
 }
 
 type modelSettings struct {
-	BatchMode            BatchMode          `json:"batchMode"`
-	Niter                int                `json:"niter"`
-	Verbose              bool               `json:"verbose"`
-	ActivationOrder      [3]ActivationOrder `json:"activationOrder"`
-	RedSize              [3]int             `json:"RedSize"`
-	RedHealth            [3]int             `json:"RedHealth"`
-	RedShotProb          [3]float64         `json:"RedShotProb"`
-	RedRetreatThreshold  [3]float64         `json:"RedRetreatThreshold"`
-	BlueSize             [3]int             `json:"BlueSize"`
-	BlueHealth           [3]int             `json:"BlueHealth"`
-	BlueShotProb         [3]float64         `json:"BlueShotProb"`
-	BlueRetreatThreshold [3]float64         `json:"BlueRetreatThreshold"`
+	Filename             string            `json:"filename"`
+	WriteDynamics        bool              `json:"writeDynamics"`
+	BatchMode            BatchMode         `json:"batchMode"`
+	Niter                int               `json:"niter"`
+	Verbose              bool              `json:"verbose"`
+	ActivationOrder      []ActivationOrder `json:"activationOrder"`
+	RedSize              [3]int            `json:"RedSize"`
+	RedHealth            [3]int            `json:"RedHealth"`
+	RedShotProb          [3]float64        `json:"RedShotProb"`
+	RedRetreatThreshold  [3]float64        `json:"RedRetreatThreshold"`
+	BlueSize             [3]int            `json:"BlueSize"`
+	BlueHealth           [3]int            `json:"BlueHealth"`
+	BlueShotProb         [3]float64        `json:"BlueShotProb"`
+	BlueRetreatThreshold [3]float64        `json:"BlueRetreatThreshold"`
 }
 
 type parameters struct {
@@ -74,6 +89,7 @@ var turns = 0
 var par parameters
 var set modelSettings
 var runNum = 1
+var writeToFile = false
 
 //Implement Stringer
 func (f force) String() string {
@@ -83,16 +99,17 @@ func (f force) String() string {
 
 func (a ActivationOrder) String() string {
 	if a == 0 {
-		return fmt.Sprintf("random synchronous")
+		return fmt.Sprintf("random-synchronous")
 	} else if a == 1 {
-		return fmt.Sprintf("uniform synchronous")
+		return fmt.Sprintf("uniform-synchronous")
 	} else if a == 2 {
-		return fmt.Sprintf("random asynchronous")
+		return fmt.Sprintf("random-asynchronous")
 	} else if a == 3 {
-		return fmt.Sprintf("uniform asynchronous")
+		return fmt.Sprintf("uniform-asynchronous")
 	}
 	return "undefined"
 }
+
 func (c casualties) String() string {
 	var buffer bytes.Buffer
 	for _, x := range c {
@@ -101,9 +118,22 @@ func (c casualties) String() string {
 	return buffer.String()
 }
 
+func (o Outcome) String() string {
+	if o == 0 {
+		return fmt.Sprintf("incomplete")
+	} else if o == 1 {
+		return fmt.Sprintf("red-victory")
+	} else if o == 2 {
+		return fmt.Sprintf("blue-victory")
+	} else if o == 3 {
+		return fmt.Sprintf("stalemate")
+	} else {
+		return fmt.Sprintf("error")
+	}
+}
+
 //Initialize and return a force: a collection of units
 func createForce(size, health int, shotProb, retreatThreshold float64) force {
-
 	f := force{forces: make([]unit, 0),
 		forceSize:        size,
 		retreatThreshold: retreatThreshold,
@@ -111,7 +141,6 @@ func createForce(size, health int, shotProb, retreatThreshold float64) force {
 		health:           health}
 	for i := 0; i < size; i++ {
 		f.forces = append(f.forces, unit{shotProb, health})
-
 	}
 	return f
 }
@@ -139,8 +168,16 @@ func doCombatRandomSync(red, blue *force, par parameters) bool {
 			printCasualties(redKilled, blueKilled)
 		}
 		//adjudicate results
-		if adjudicate(red, blue, red.forceSize, blue.forceSize, par) {
+		if status := adjudicate(red, blue, red.forceSize, blue.forceSize, par); status != incomplete {
+			if writeToFile {
+				turns++
+				writeLine(*red, *blue, status)
+			}
+
 			return true
+		}
+		if writeToFile && set.WriteDynamics {
+			writeLine(*red, *blue, incomplete)
 		}
 	}
 	return false
@@ -168,13 +205,21 @@ func doCombatUniform(red, blue *force, par parameters) bool {
 		}
 
 		//adjudicate results
-		if adjudicate(red, blue, red.forceSize, blue.forceSize, par) {
+		if status := adjudicate(red, blue, red.forceSize, blue.forceSize, par); status != incomplete {
+			if writeToFile {
+				turns++
+				writeLine(*red, *blue, status)
+			}
+
 			return true
 		}
-
+		if writeToFile && set.WriteDynamics {
+			writeLine(*red, *blue, incomplete)
+		}
 	}
 	return false
 }
+
 func doCombatRandomAsync(red, blue *force, par parameters) bool {
 	for {
 		turns++
@@ -191,13 +236,20 @@ func doCombatRandomAsync(red, blue *force, par parameters) bool {
 				printCasualties(redKilled, blueKilled)
 			}
 
-			if adjudicate(red, blue, red.forceSize, blue.forceSize, par) {
+			if status := adjudicate(red, blue, red.forceSize, blue.forceSize, par); status != incomplete {
+				if writeToFile {
+					turns++
+					writeLine(*red, *blue, status)
+				}
+
 				return true
 			}
-
 		}
-
+		if writeToFile && set.WriteDynamics {
+			writeLine(*red, *blue, incomplete)
+		}
 	}
+	return false
 }
 
 func doCombatUniformAsync(red, blue *force, par parameters) bool {
@@ -216,22 +268,33 @@ func doCombatUniformAsync(red, blue *force, par parameters) bool {
 				printCasualties(redKilled, blueKilled)
 			}
 
-			if adjudicate(red, blue, red.forceSize, blue.forceSize, par) {
+			if status := adjudicate(red, blue, red.forceSize, blue.forceSize, par); status != incomplete {
+				if writeToFile {
+					turns++
+					writeLine(*red, *blue, status)
+				}
+
 				return true
 			}
-
 		}
-
+		if writeToFile && set.WriteDynamics {
+			writeLine(*red, *blue, incomplete)
+		}
 	}
+	return false
 }
 
 //Determine if one force should retreat. This should be refactored to determine a winner/loser.
-func adjudicate(red, blue *force, RedSize, BlueSize int, par parameters) bool {
+func adjudicate(red, blue *force, RedSize, BlueSize int, par parameters) Outcome {
 	_ = "breakpoint"
-	if float64(len(red.forces)) < float64(RedSize)*red.retreatThreshold || float64(len(blue.forces)) < float64(BlueSize)*blue.retreatThreshold {
-		return true
+	if float64(len(red.forces)) <= float64(RedSize)*red.retreatThreshold && float64(len(blue.forces)) <= float64(BlueSize)*blue.retreatThreshold {
+		return tie
+	} else if float64(len(red.forces)) <= float64(RedSize)*red.retreatThreshold {
+		return blueVictory
+	} else if float64(len(blue.forces)) <= float64(BlueSize)*blue.retreatThreshold {
+		return redVictory
 	}
-	return false
+	return incomplete
 }
 
 //Remove all forces with health = 0. Return array of killed units.
@@ -283,13 +346,44 @@ func printCasualties(r, b casualties) {
 			fmt.Printf("Blue forces: %vkilled\n", b.String())
 		}
 	}
+}
+func writeLine(r, b force, status Outcome) {
+	s := make([]string, 13)
+	s[0] = fmt.Sprintf("%v", runNum)
+	s[1] = fmt.Sprintf("%v", par.ActivationOrder)
+	s[2] = fmt.Sprintf("%v", par.RedSize)
+	s[3] = fmt.Sprintf("%v", par.RedHealth)
+	s[4] = fmt.Sprintf("%.3v", par.RedShotProb)
+	s[5] = fmt.Sprintf("%.3v", par.RedRetreatThreshold)
+	s[6] = fmt.Sprintf("%v", len(r.forces))
+	s[7] = fmt.Sprintf("%v", par.BlueSize)
+	s[8] = fmt.Sprintf("%v", par.BlueHealth)
+	s[9] = fmt.Sprintf("%.3v", par.BlueShotProb)
+	s[10] = fmt.Sprintf("%.3v", par.BlueRetreatThreshold)
+	s[11] = fmt.Sprintf("%v", len(b.forces))
+	s[12] = fmt.Sprintf("%v", status)
+	_ = "breakpoint"
+	err := w.Write(s)
+	if err != nil {
+		panic(err)
+	}
+}
 
+func writeHeader() {
+	headers := []string{"run", "activation-order", "red-size", "red-health", "red-shot-prob", "red-retreat-threshold", "red-forces", "blue-size", "blue-health", "blue-shot-prob", "blue-retreat-threshold", "blue-forces", "victor"}
+	err := w.Write(headers)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func runModel(par parameters, runNum int) {
 	// initialize forces
 	red := createForce(par.RedSize, par.RedHealth, par.RedShotProb, par.RedRetreatThreshold)
 	blue := createForce(par.BlueSize, par.BlueHealth, par.BlueShotProb, par.BlueRetreatThreshold)
+
+	//reset turns
+	turns = 0
 
 	fmt.Println()
 	fmt.Printf("Starting run number %v \n", runNum)
@@ -310,41 +404,72 @@ func runModel(par parameters, runNum int) {
 	fmt.Println("Final model state:")
 	fmt.Printf("The red force has %v.\n", red)
 	fmt.Printf("The blue force %v.\n", blue)
-
 }
 
 func main() {
+	var file []byte
 	if len(os.Args) <= 1 {
-		fmt.Println("Please provide a JSON file with the appropriate model parameters")
-		os.Exit(1)
+		if _, err := os.Stat("parameters.json"); !os.IsNotExist(err) {
+			fmt.Println("Using default parameter settings...")
+			file, err = ioutil.ReadFile("parameters.json")
+			if err != nil {
+				fmt.Println("Error opening parameter file")
+				os.Exit(2)
+			}
+		} else {
+			fmt.Println("Please provide a JSON file with the appropriate model parameters")
+			os.Exit(1)
+		}
+	} else {
+		var err error
+		file, err = ioutil.ReadFile(os.Args[1])
+		if err != nil {
+			fmt.Println("Error opening parameter file")
+			os.Exit(2)
+		}
 	}
-	file, err := ioutil.ReadFile(os.Args[1])
-	if err != nil {
-		fmt.Println("Error opening parameter file")
-		os.Exit(2)
-	}
-	err = json.Unmarshal(file, &set)
+	err := json.Unmarshal(file, &set)
 	if err != nil {
 		fmt.Println("Error parsing JSON")
 		os.Exit(3)
 	}
 
+	if set.Filename != "" {
+		writeToFile = true
+		var err error // paranoid about shadowing f
+		f, err = os.Create(set.Filename)
+		if err != nil {
+			panic(err)
+		}
+
+		defer f.Close()
+		w = csv.NewWriter(f)
+		defer w.Flush()
+
+		writeHeader()
+
+	}
 	rand.Seed(time.Now().UnixNano())
 
-	if set.BatchMode == 0 {
-		par = parameters{
-			Verbose:              set.Verbose,
-			ActivationOrder:      set.ActivationOrder[0],
-			RedSize:              set.RedSize[0],
-			RedHealth:            set.RedHealth[0],
-			RedShotProb:          set.RedShotProb[0],
-			RedRetreatThreshold:  set.RedRetreatThreshold[0],
-			BlueSize:             set.BlueSize[0],
-			BlueHealth:           set.BlueHealth[0],
-			BlueShotProb:         set.BlueShotProb[0],
-			BlueRetreatThreshold: set.BlueRetreatThreshold[0],
-		}
-		runModel(par, runNum)
-	}
+	switch set.BatchMode {
+	case 0:
+		runOnce()
 
+	case 1:
+		sweepSize, ps := caluculateSweep()
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Printf("Run parameter sweep with %v runs? (Y/n):  ", sweepSize)
+		text, err := reader.ReadString('\n')
+		if err != nil {
+			panic(err)
+		}
+		text = strings.TrimRight(text, "\n")
+
+		if text == "N" || text == "n" {
+			fmt.Println("Cancelling")
+		} else {
+			fmt.Println("Continuing with parameter sweep")
+			executeSweep(ps)
+		}
+	}
 }
