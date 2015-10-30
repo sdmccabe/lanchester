@@ -1,5 +1,6 @@
 package main
 
+//parameter set holds the potential values for a parameter sweep
 type parameterSet struct {
 	Verbose              bool
 	ActivationOrder      []ActivationOrder
@@ -13,6 +14,7 @@ type parameterSet struct {
 	BlueRetreatThreshold []float64
 }
 
+// runOnce uses the base values from parameters.json to feed one run
 func runOnce() {
 	par = parameters{
 		Verbose:              set.Verbose,
@@ -30,6 +32,8 @@ func runOnce() {
 
 }
 
+// calculateSweep generates the parameter set and returns
+// its size so that the user can be warned
 func caluculateSweep() (int, parameterSet) {
 	//TODO: Use reflect to make this less horrible.
 	_ = "breakpoint"
@@ -47,7 +51,6 @@ func caluculateSweep() (int, parameterSet) {
 		BlueRetreatThreshold: make([]float64, 0),
 	}
 
-	//parSet.RedSize = append(parSet.RedSize, par.RedSize[0])
 	if set.RedSize[2] != 0 {
 		sweepSize *= (set.RedSize[1] - (set.RedSize[0] - set.RedSize[2])) / set.RedSize[2]
 		for i := set.RedSize[0]; i <= set.RedSize[1]; i += set.RedSize[2] {
@@ -118,9 +121,11 @@ func caluculateSweep() (int, parameterSet) {
 	return sweepSize * set.Niter, parSet
 }
 
+// Execute the parameter sweep
 func executeSweep(ps parameterSet) {
 	ps.Verbose = set.Verbose
 	par.Verbose = ps.Verbose
+	// set the parameters to the initial values
 	par = parameters{
 		Verbose:              set.Verbose,
 		ActivationOrder:      set.ActivationOrder[0],
@@ -134,6 +139,7 @@ func executeSweep(ps parameterSet) {
 		BlueRetreatThreshold: set.BlueRetreatThreshold[0],
 	}
 
+	// TRIGGER WARNING
 	for _, e := range ps.ActivationOrder {
 		par.ActivationOrder = e
 		for _, e := range ps.RedSize {

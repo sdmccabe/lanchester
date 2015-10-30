@@ -16,6 +16,7 @@ import (
 var f *os.File
 var w *csv.Writer
 
+//enums
 type ActivationOrder int
 type BatchMode int
 type Outcome int
@@ -284,7 +285,7 @@ func doCombatUniformAsync(red, blue *force, par parameters) bool {
 	return false
 }
 
-//Determine if one force should retreat. This should be refactored to determine a winner/loser.
+// Determine if one force should retreat.
 func adjudicate(red, blue *force, RedSize, BlueSize int, par parameters) Outcome {
 	_ = "breakpoint"
 	if float64(len(red.forces)) <= float64(RedSize)*red.retreatThreshold && float64(len(blue.forces)) <= float64(BlueSize)*blue.retreatThreshold {
@@ -347,6 +348,8 @@ func printCasualties(r, b casualties) {
 		}
 	}
 }
+
+// Write one line to the csv
 func writeLine(r, b force, status Outcome) {
 	s := make([]string, 13)
 	s[0] = fmt.Sprintf("%v", runNum)
@@ -369,6 +372,7 @@ func writeLine(r, b force, status Outcome) {
 	}
 }
 
+// Write csv headers
 func writeHeader() {
 	headers := []string{"run", "activation-order", "red-size", "red-health", "red-shot-prob", "red-retreat-threshold", "red-forces", "blue-size", "blue-health", "blue-shot-prob", "blue-retreat-threshold", "blue-forces", "victor"}
 	err := w.Write(headers)
@@ -377,6 +381,7 @@ func writeHeader() {
 	}
 }
 
+// Wrapper function for handling different activation orders
 func runModel(par parameters, runNum int) {
 	// initialize forces
 	red := createForce(par.RedSize, par.RedHealth, par.RedShotProb, par.RedRetreatThreshold)
@@ -385,12 +390,15 @@ func runModel(par parameters, runNum int) {
 	//reset turns
 	turns = 0
 
-	fmt.Println()
-	fmt.Printf("Starting run number %v \n", runNum)
-	fmt.Println("Initial model state:")
-	fmt.Printf("The red force has %v.\n", red)
-	fmt.Printf("The blue force has %v.\n", blue)
-	fmt.Printf("Running model with %v activation:\n", par.ActivationOrder)
+	//TODO: multiple verbosity levels
+	if set.Verbose {
+		fmt.Println()
+		fmt.Printf("Starting run number %v \n", runNum)
+		fmt.Println("Initial model state:")
+		fmt.Printf("The red force has %v.\n", red)
+		fmt.Printf("The blue force has %v.\n", blue)
+		fmt.Printf("Running model with %v activation:\n", par.ActivationOrder)
+	}
 	if par.ActivationOrder == randomSynchronous {
 		doCombatRandomSync(&red, &blue, par)
 	} else if par.ActivationOrder == uniformSynchronous {
@@ -400,15 +408,19 @@ func runModel(par parameters, runNum int) {
 	} else if par.ActivationOrder == uniformAsynchronous {
 		doCombatUniformAsync(&red, &blue, par)
 	}
-	fmt.Printf("\nModel finished after %v turns.\n\n", turns)
-	fmt.Println("Final model state:")
-	fmt.Printf("The red force has %v.\n", red)
-	fmt.Printf("The blue force %v.\n", blue)
+	if set.Verbose {
+		fmt.Printf("\nModel finished after %v turns.\n\n", turns)
+		fmt.Println("Final model state:")
+		fmt.Printf("The red force has %v.\n", red)
+		fmt.Printf("The blue force %v.\n", blue)
+	}
 }
 
 func main() {
+
 	var file []byte
 	if len(os.Args) <= 1 {
+		// if no argument is specified, see if you can load the default file
 		if _, err := os.Stat("parameters.json"); !os.IsNotExist(err) {
 			fmt.Println("Using default parameter settings...")
 			file, err = ioutil.ReadFile("parameters.json")
@@ -428,12 +440,16 @@ func main() {
 			os.Exit(2)
 		}
 	}
+	// parse the JSON into model settings
 	err := json.Unmarshal(file, &set)
 	if err != nil {
 		fmt.Println("Error parsing JSON")
 		os.Exit(3)
 	}
 
+	// if there is a specified filename, writing to file is enabled, so create the file
+	// this will clobber the file
+	// TODO: prevent doing something stupid, like overwriting the source file
 	if set.Filename != "" {
 		writeToFile = true
 		var err error // paranoid about shadowing f
@@ -456,6 +472,8 @@ func main() {
 		runOnce()
 
 	case 1:
+		// if running a parameter sweep, check with the user to make sure
+		// they know how many runs they're doing
 		sweepSize, ps := caluculateSweep()
 		reader := bufio.NewReader(os.Stdin)
 		fmt.Printf("Run parameter sweep with %v runs? (Y/n):  ", sweepSize)
