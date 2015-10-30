@@ -1,5 +1,7 @@
 package main
 
+import "math/rand"
+
 //parameter set holds the potential values for a parameter sweep
 type parameterSet struct {
 	Verbose              bool
@@ -7,10 +9,12 @@ type parameterSet struct {
 	RedSize              []int
 	RedHealth            []int
 	RedShotProb          []float64
+	RedMaxShots          []int
 	RedRetreatThreshold  []float64
 	BlueSize             []int
 	BlueHealth           []int
 	BlueShotProb         []float64
+	BlueMaxShots         []int
 	BlueRetreatThreshold []float64
 }
 
@@ -22,10 +26,12 @@ func runOnce() {
 		RedSize:              set.RedSize[0],
 		RedHealth:            set.RedHealth[0],
 		RedShotProb:          set.RedShotProb[0],
+		RedMaxShots:          set.RedMaxShots[0],
 		RedRetreatThreshold:  set.RedRetreatThreshold[0],
 		BlueSize:             set.BlueSize[0],
 		BlueHealth:           set.BlueHealth[0],
 		BlueShotProb:         set.BlueShotProb[0],
+		BlueMaxShots:         set.BlueMaxShots[0],
 		BlueRetreatThreshold: set.BlueRetreatThreshold[0],
 	}
 	runModel(par, runNum)
@@ -44,10 +50,12 @@ func caluculateSweep() (int, parameterSet) {
 		RedSize:              make([]int, 0),
 		RedHealth:            make([]int, 0),
 		RedShotProb:          make([]float64, 0),
+		RedMaxShots:          make([]int, 0),
 		RedRetreatThreshold:  make([]float64, 0),
 		BlueSize:             make([]int, 0),
 		BlueHealth:           make([]int, 0),
 		BlueShotProb:         make([]float64, 0),
+		BlueMaxShots:         make([]int, 0),
 		BlueRetreatThreshold: make([]float64, 0),
 	}
 
@@ -102,6 +110,23 @@ func caluculateSweep() (int, parameterSet) {
 		parSet.BlueShotProb = append(parSet.BlueShotProb, set.BlueShotProb[0])
 	}
 
+	if set.RedMaxShots[2] != 0.0 {
+		sweepSize *= int((set.RedMaxShots[1] - (set.RedMaxShots[0] - set.RedMaxShots[2])) / set.RedMaxShots[2])
+		for i := set.RedMaxShots[0]; i <= set.RedMaxShots[1]; i += set.RedMaxShots[2] {
+			parSet.RedMaxShots = append(parSet.RedMaxShots, i)
+		}
+	} else {
+		parSet.RedMaxShots = append(parSet.RedMaxShots, set.RedMaxShots[0])
+	}
+	if set.BlueMaxShots[2] != 0.0 {
+		sweepSize *= int((set.BlueMaxShots[1] - (set.BlueMaxShots[0] - set.BlueMaxShots[2])) / set.BlueMaxShots[2])
+		for i := set.BlueMaxShots[0]; i <= set.BlueMaxShots[1]; i += set.BlueMaxShots[2] {
+			parSet.BlueMaxShots = append(parSet.BlueMaxShots, i)
+		}
+	} else {
+		parSet.BlueMaxShots = append(parSet.BlueMaxShots, set.BlueMaxShots[0])
+	}
+
 	if set.RedRetreatThreshold[2] != 0.0 {
 		sweepSize *= int((set.RedRetreatThreshold[1] - (set.RedRetreatThreshold[0] - set.RedRetreatThreshold[2])) / set.RedRetreatThreshold[2])
 		for i := set.RedRetreatThreshold[0]; i <= set.RedRetreatThreshold[1]; i += set.RedRetreatThreshold[2] {
@@ -132,10 +157,12 @@ func executeSweep(ps parameterSet) {
 		RedSize:              set.RedSize[0],
 		RedHealth:            set.RedHealth[0],
 		RedShotProb:          set.RedShotProb[0],
+		RedMaxShots:          set.RedMaxShots[0],
 		RedRetreatThreshold:  set.RedRetreatThreshold[0],
 		BlueSize:             set.BlueSize[0],
 		BlueHealth:           set.BlueHealth[0],
 		BlueShotProb:         set.BlueShotProb[0],
+		BlueMaxShots:         set.BlueMaxShots[0],
 		BlueRetreatThreshold: set.BlueRetreatThreshold[0],
 	}
 
@@ -148,19 +175,25 @@ func executeSweep(ps parameterSet) {
 				par.RedHealth = e
 				for _, e := range ps.RedShotProb {
 					par.RedShotProb = e
-					for _, e := range ps.RedRetreatThreshold {
-						par.RedRetreatThreshold = e
-						for _, e := range ps.BlueSize {
-							par.BlueSize = e
-							for _, e := range ps.BlueHealth {
-								par.BlueHealth = e
-								for _, e := range ps.BlueShotProb {
-									par.BlueShotProb = e
-									for _, e := range ps.BlueRetreatThreshold {
-										par.BlueRetreatThreshold = e
-										for i := 0; i < set.Niter; i++ {
-											runModel(par, runNum)
-											runNum++
+					for _, e := range ps.RedMaxShots {
+						par.RedMaxShots = e
+						for _, e := range ps.RedRetreatThreshold {
+							par.RedRetreatThreshold = e
+							for _, e := range ps.BlueSize {
+								par.BlueSize = e
+								for _, e := range ps.BlueHealth {
+									par.BlueHealth = e
+									for _, e := range ps.BlueShotProb {
+										par.BlueShotProb = e
+										for _, e := range ps.BlueMaxShots {
+											par.BlueMaxShots = e
+											for _, e := range ps.BlueRetreatThreshold {
+												par.BlueRetreatThreshold = e
+												for i := 0; i < set.Niter; i++ {
+													runModel(par, runNum)
+													runNum++
+												}
+											}
 										}
 									}
 								}
@@ -171,4 +204,28 @@ func executeSweep(ps parameterSet) {
 			}
 		}
 	}
+}
+
+func monteCarloRun() {
+	for i := 0; i < set.Niter; i++ {
+
+		par = parameters{
+			ActivationOrder:      set.ActivationOrder[rand.Intn(len(set.ActivationOrder))],
+			RedSize:              rand.Intn(set.RedSize[1]-set.RedSize[0]+1) + set.RedSize[0],
+			RedHealth:            rand.Intn(set.RedHealth[1]-set.RedHealth[0]+1) + set.RedHealth[0],
+			RedShotProb:          set.RedShotProb[0] + (set.RedShotProb[1]-set.RedShotProb[0])*rand.Float64(),
+			RedMaxShots:          rand.Intn(set.RedMaxShots[1]-set.RedMaxShots[0]+1) + set.RedMaxShots[0],
+			RedRetreatThreshold:  set.RedRetreatThreshold[0] + (set.RedRetreatThreshold[1]-set.RedRetreatThreshold[0])*rand.Float64(),
+			BlueSize:             rand.Intn(set.BlueSize[1]-set.BlueSize[0]+1) + set.BlueSize[0],
+			BlueHealth:           rand.Intn(set.BlueHealth[1]-set.BlueHealth[0]+1) + set.BlueHealth[0],
+			BlueShotProb:         set.BlueShotProb[0] + (set.BlueShotProb[1]-set.BlueShotProb[0])*rand.Float64(),
+			BlueMaxShots:         rand.Intn(set.BlueMaxShots[1]-set.BlueMaxShots[0]+1) + set.BlueMaxShots[0],
+			BlueRetreatThreshold: set.BlueRetreatThreshold[0] + (set.BlueRetreatThreshold[1]-set.BlueRetreatThreshold[0])*rand.Float64(),
+		}
+
+		runModel(par, runNum)
+		runNum++
+
+	}
+
 }

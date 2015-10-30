@@ -42,6 +42,7 @@ const (
 )
 
 type unit struct {
+	maxShots int
 	shotProb float64
 	health   int
 }
@@ -51,6 +52,7 @@ type force struct {
 	forceSize        int
 	retreatThreshold float64
 	shotProb         float64
+	maxShots         int
 	health           int
 }
 
@@ -64,10 +66,12 @@ type modelSettings struct {
 	RedSize              [3]int            `json:"RedSize"`
 	RedHealth            [3]int            `json:"RedHealth"`
 	RedShotProb          [3]float64        `json:"RedShotProb"`
+	RedMaxShots          [3]int            `json:"RedMaxShots"`
 	RedRetreatThreshold  [3]float64        `json:"RedRetreatThreshold"`
 	BlueSize             [3]int            `json:"BlueSize"`
 	BlueHealth           [3]int            `json:"BlueHealth"`
 	BlueShotProb         [3]float64        `json:"BlueShotProb"`
+	BlueMaxShots         [3]int            `json:"BlueMaxShots"`
 	BlueRetreatThreshold [3]float64        `json:"BlueRetreatThreshold"`
 }
 
@@ -77,10 +81,12 @@ type parameters struct {
 	RedSize              int
 	RedHealth            int
 	RedShotProb          float64
+	RedMaxShots          int
 	RedRetreatThreshold  float64
 	BlueSize             int
 	BlueHealth           int
 	BlueShotProb         float64
+	BlueMaxShots         int
 	BlueRetreatThreshold float64
 }
 
@@ -134,14 +140,15 @@ func (o Outcome) String() string {
 }
 
 //Initialize and return a force: a collection of units
-func createForce(size, health int, shotProb, retreatThreshold float64) force {
+func createForce(size, health, maxShots int, shotProb, retreatThreshold float64) force {
 	f := force{forces: make([]unit, 0),
 		forceSize:        size,
 		retreatThreshold: retreatThreshold,
 		shotProb:         shotProb,
-		health:           health}
+		health:           health,
+		maxShots:         maxShots}
 	for i := 0; i < size; i++ {
-		f.forces = append(f.forces, unit{shotProb, health})
+		f.forces = append(f.forces, unit{maxShots, shotProb, health})
 	}
 	return f
 }
@@ -329,10 +336,12 @@ func removeKilled(red, blue *force) (casualties, casualties) {
 
 //One agent shoots at all opposing agents.
 func shoot(a unit, target *force) {
-	for i := range target.forces {
-		if rand.Float64() < a.shotProb {
+	x := a.maxShots
+	for i := range target.forces { //TODO: non-random; doesn't matter unless I add heterogeneity
+		if rand.Float64() < a.shotProb && x > 0 {
 			target.forces[i].health--
 		}
+		x--
 	}
 }
 
@@ -351,20 +360,22 @@ func printCasualties(r, b casualties) {
 
 // Write one line to the csv
 func writeLine(r, b force, status Outcome) {
-	s := make([]string, 13)
+	s := make([]string, 15)
 	s[0] = fmt.Sprintf("%v", runNum)
 	s[1] = fmt.Sprintf("%v", par.ActivationOrder)
 	s[2] = fmt.Sprintf("%v", par.RedSize)
 	s[3] = fmt.Sprintf("%v", par.RedHealth)
 	s[4] = fmt.Sprintf("%.3v", par.RedShotProb)
-	s[5] = fmt.Sprintf("%.3v", par.RedRetreatThreshold)
-	s[6] = fmt.Sprintf("%v", len(r.forces))
-	s[7] = fmt.Sprintf("%v", par.BlueSize)
-	s[8] = fmt.Sprintf("%v", par.BlueHealth)
-	s[9] = fmt.Sprintf("%.3v", par.BlueShotProb)
-	s[10] = fmt.Sprintf("%.3v", par.BlueRetreatThreshold)
-	s[11] = fmt.Sprintf("%v", len(b.forces))
-	s[12] = fmt.Sprintf("%v", status)
+	s[5] = fmt.Sprintf("%v", par.RedMaxShots)
+	s[6] = fmt.Sprintf("%.3v", par.RedRetreatThreshold)
+	s[7] = fmt.Sprintf("%v", len(r.forces))
+	s[8] = fmt.Sprintf("%v", par.BlueSize)
+	s[9] = fmt.Sprintf("%v", par.BlueHealth)
+	s[10] = fmt.Sprintf("%.3v", par.BlueShotProb)
+	s[11] = fmt.Sprintf("%v", par.BlueMaxShots)
+	s[12] = fmt.Sprintf("%.3v", par.BlueRetreatThreshold)
+	s[13] = fmt.Sprintf("%v", len(b.forces))
+	s[14] = fmt.Sprintf("%v", status)
 	_ = "breakpoint"
 	err := w.Write(s)
 	if err != nil {
@@ -374,7 +385,7 @@ func writeLine(r, b force, status Outcome) {
 
 // Write csv headers
 func writeHeader() {
-	headers := []string{"run", "activation-order", "red-size", "red-health", "red-shot-prob", "red-retreat-threshold", "red-forces", "blue-size", "blue-health", "blue-shot-prob", "blue-retreat-threshold", "blue-forces", "victor"}
+	headers := []string{"run", "activation-order", "red-size", "red-health", "red-shot-prob", "red-max-shots", "red-retreat-threshold", "red-forces", "blue-size", "blue-health", "blue-shot-prob", "blue-retreat-threshold", "blue-forces", "victor"}
 	err := w.Write(headers)
 	if err != nil {
 		panic(err)
@@ -384,8 +395,8 @@ func writeHeader() {
 // Wrapper function for handling different activation orders
 func runModel(par parameters, runNum int) {
 	// initialize forces
-	red := createForce(par.RedSize, par.RedHealth, par.RedShotProb, par.RedRetreatThreshold)
-	blue := createForce(par.BlueSize, par.BlueHealth, par.BlueShotProb, par.BlueRetreatThreshold)
+	red := createForce(par.RedSize, par.RedHealth, par.RedMaxShots, par.RedShotProb, par.RedRetreatThreshold)
+	blue := createForce(par.BlueSize, par.BlueHealth, par.BlueMaxShots, par.BlueShotProb, par.BlueRetreatThreshold)
 
 	//reset turns
 	turns = 0
@@ -468,10 +479,10 @@ func main() {
 	rand.Seed(time.Now().UnixNano())
 
 	switch set.BatchMode {
-	case 0:
+	case singleRun:
 		runOnce()
 
-	case 1:
+	case parameterSweep:
 		// if running a parameter sweep, check with the user to make sure
 		// they know how many runs they're doing
 		sweepSize, ps := caluculateSweep()
@@ -489,5 +500,7 @@ func main() {
 			fmt.Println("Continuing with parameter sweep")
 			executeSweep(ps)
 		}
+	case monteCarlo:
+		monteCarloRun()
 	}
 }
