@@ -153,13 +153,11 @@ func createForce(size, health, maxShots int, shotProb, retreatThreshold float64)
 	return f
 }
 
-//Adjucate combat. This should probably be restructured into a scheduling function.
 func doCombatRandomSync(red, blue *force, par parameters) bool {
 	for {
 		// increment turn
 		turns++
 
-		// random (synchronous?) activation first, it's simplest
 		pool := len(red.forces) + len(blue.forces)
 		for i := 0; i < pool; i++ {
 			active := rand.Intn(pool)
@@ -178,7 +176,6 @@ func doCombatRandomSync(red, blue *force, par parameters) bool {
 		//adjudicate results
 		if status := adjudicate(red, blue, red.forceSize, blue.forceSize, par); status != incomplete {
 			if writeToFile {
-				turns++
 				writeLine(*red, *blue, status)
 			}
 
@@ -196,7 +193,6 @@ func doCombatUniform(red, blue *force, par parameters) bool {
 		// increment turn
 		turns++
 
-		// uniform (synchronous?) activation
 		turnList := rand.Perm(len(red.forces) + len(blue.forces))
 		for _, e := range turnList {
 			if e >= len(red.forces) {
@@ -215,7 +211,6 @@ func doCombatUniform(red, blue *force, par parameters) bool {
 		//adjudicate results
 		if status := adjudicate(red, blue, red.forceSize, blue.forceSize, par); status != incomplete {
 			if writeToFile {
-				turns++
 				writeLine(*red, *blue, status)
 			}
 
@@ -246,7 +241,6 @@ func doCombatRandomAsync(red, blue *force, par parameters) bool {
 
 			if status := adjudicate(red, blue, red.forceSize, blue.forceSize, par); status != incomplete {
 				if writeToFile {
-					turns++
 					writeLine(*red, *blue, status)
 				}
 
@@ -278,7 +272,6 @@ func doCombatUniformAsync(red, blue *force, par parameters) bool {
 
 			if status := adjudicate(red, blue, red.forceSize, blue.forceSize, par); status != incomplete {
 				if writeToFile {
-					turns++
 					writeLine(*red, *blue, status)
 				}
 
@@ -360,7 +353,7 @@ func printCasualties(r, b casualties) {
 
 // Write one line to the csv
 func writeLine(r, b force, status Outcome) {
-	s := make([]string, 15)
+	s := make([]string, 16)
 	s[0] = fmt.Sprintf("%v", runNum)
 	s[1] = fmt.Sprintf("%v", par.ActivationOrder)
 	s[2] = fmt.Sprintf("%v", par.RedSize)
@@ -376,6 +369,7 @@ func writeLine(r, b force, status Outcome) {
 	s[12] = fmt.Sprintf("%.3v", par.BlueRetreatThreshold)
 	s[13] = fmt.Sprintf("%v", len(b.forces))
 	s[14] = fmt.Sprintf("%v", status)
+	s[15] = fmt.Sprintf("%v", turns)
 	_ = "breakpoint"
 	err := w.Write(s)
 	if err != nil {
@@ -385,7 +379,7 @@ func writeLine(r, b force, status Outcome) {
 
 // Write csv headers
 func writeHeader() {
-	headers := []string{"run", "activation-order", "red-size", "red-health", "red-shot-prob", "red-max-shots", "red-retreat-threshold", "red-forces", "blue-size", "blue-health", "blue-shot-prob", "blue-retreat-threshold", "blue-forces", "victor"}
+	headers := []string{"run", "activation-order", "red-size", "red-health", "red-shot-prob", "red-max-shots", "red-retreat-threshold", "red-forces", "blue-size", "blue-health", "blue-shot-prob", "blue-max-shots", "blue-retreat-threshold", "blue-forces", "victor", "turns"}
 	err := w.Write(headers)
 	if err != nil {
 		panic(err)
