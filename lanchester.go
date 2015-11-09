@@ -375,6 +375,7 @@ func writeLine(r, b force, status Outcome) {
 	if err != nil {
 		panic(err)
 	}
+	w.Flush()
 }
 
 // Write csv headers

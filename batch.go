@@ -1,6 +1,9 @@
 package main
 
-import "math/rand"
+import (
+	"fmt"
+	"math/rand"
+)
 
 //parameter set holds the potential values for a parameter sweep
 type parameterSet struct {
@@ -222,10 +225,13 @@ func monteCarloRun() {
 			BlueMaxShots:         rand.Intn(set.BlueMaxShots[1]-set.BlueMaxShots[0]+1) + set.BlueMaxShots[0],
 			BlueRetreatThreshold: set.BlueRetreatThreshold[0] + (set.BlueRetreatThreshold[1]-set.BlueRetreatThreshold[0])*rand.Float64(),
 		}
-
 		runModel(par, runNum)
-		runNum++
 
 	}
+}
 
+func latinHypercubeRun() {
+	fmt.Println("Error: Not yet implemented")
+
+	return
 }
