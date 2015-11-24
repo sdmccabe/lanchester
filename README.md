@@ -11,7 +11,5 @@ USAGE: The model takes a JSON file describing the model parameters as an argumen
 
 TODO: 
 
-- Finish model parameter input for easy batch runs
-- Allow a parameter to limit the number of shots fired by an agent per turn (as in EINSTein)
 - Verify that my decision to "kill" agents by removing them from the array rather than changing some state variable isn't biasing activation.
 - Formalize model outputs.
