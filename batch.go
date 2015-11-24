@@ -43,6 +43,10 @@ func runOnce() {
 
 // calculateSweep generates the parameter set and returns
 // its size so that the user can be warned
+
+// TODO: There is a bug in this function causing it to return
+// inaccurate parameter sets due to inaccuracies in floating-point
+// arithmetic. This should not be too difficult to fix at some point.
 func caluculateSweep() (int, parameterSet) {
 	//TODO: Use reflect to make this less horrible.
 	_ = "breakpoint"
